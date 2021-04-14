@@ -32,6 +32,8 @@ using tcp = boost::asio::ip::tcp;               // from <boost/asio/ip/tcp.hpp>
 class RESTInterface;
 class RESTSession;
 
+#define SERVER_STRING "Sensitory 0.0.1"
+
 // This function produces an HTTP response for the given
 // request. The type of the response object depends on the
 // contents of the request, so the interface requires the
@@ -43,7 +45,7 @@ template<class Body, class Allocator,class Send> void handle_request(RESTSession
     [&req](beast::string_view why)
     {
         http::response<http::string_body> res{http::status::bad_request, req.version()};
-        res.set(http::field::server, BOOST_BEAST_VERSION_STRING);
+        res.set(http::field::server, SERVER_STRING);
         res.set(http::field::content_type, "text/html");
         res.keep_alive(req.keep_alive());
         res.body() = std::string(why);
@@ -56,7 +58,7 @@ template<class Body, class Allocator,class Send> void handle_request(RESTSession
     [&req](beast::string_view target)
     {
         http::response<http::string_body> res{http::status::not_found, req.version()};
-        res.set(http::field::server, BOOST_BEAST_VERSION_STRING);
+        res.set(http::field::server, SERVER_STRING);
         res.set(http::field::content_type, "text/html");
         res.keep_alive(req.keep_alive());
         res.body() = "The resource '" + std::string(target) + "' was not found.";
@@ -69,7 +71,7 @@ template<class Body, class Allocator,class Send> void handle_request(RESTSession
     [&req](beast::string_view what)
     {
         http::response<http::string_body> res{http::status::internal_server_error, req.version()};
-        res.set(http::field::server, BOOST_BEAST_VERSION_STRING);
+        res.set(http::field::server, SERVER_STRING);
         res.set(http::field::content_type, "text/html");
         res.keep_alive(req.keep_alive());
         res.body() = "An error occurred: '" + std::string(what) + "'";
@@ -80,8 +82,8 @@ template<class Body, class Allocator,class Send> void handle_request(RESTSession
     auto const readdata =
         [&req](RESTSession *session)
     {
-        http::response<http::string_body> res{ http::status::not_found, req.version() };
-        res.set(http::field::server, BOOST_BEAST_VERSION_STRING);
+        http::response<http::string_body> res{ http::status::ok, req.version() };
+        res.set(http::field::server, SERVER_STRING);
         res.set(http::field::content_type, "text/html");
         res.keep_alive(req.keep_alive());
         auto const content = req.body();
@@ -94,8 +96,8 @@ template<class Body, class Allocator,class Send> void handle_request(RESTSession
     auto const writedata =
         [&req](RESTSession* session)
     {
-        http::response<http::string_body> res{ http::status::not_found, req.version() };
-        res.set(http::field::server, BOOST_BEAST_VERSION_STRING);
+        http::response<http::string_body> res{ http::status::ok, req.version() };
+        res.set(http::field::server, SERVER_STRING);
         res.set(http::field::content_type, "text/html");
         res.keep_alive(req.keep_alive());
         auto const content = req.body();  

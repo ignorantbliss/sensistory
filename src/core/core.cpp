@@ -27,6 +27,7 @@ ShardingCore::ShardingCore()
 	dbhandle = 0;
 	Initialised = false;
 	AutoRegister = false;
+	Compression = false;
 }
 
 ShardingCore::~ShardingCore()
@@ -87,6 +88,11 @@ void ShardingCore::InitConfig()
 	if (arenabled == 1)
 	{
 		AutoRegister = true;
+	}
+	int arenabled = cfg.GetValueInt("STORAGE:compression", 1);
+	if (arenabled == 1)
+	{
+		Compression = true;
 	}
 }
 
@@ -185,7 +191,7 @@ bool ShardingCore::InitDB()
 	if (sqlite3_prepare_v2(dbhandle, qry.c_str(), qry.size(), &statement, NULL) == SQLITE_OK)
 	{
 		int rw = sqlite3_step(statement);
-		if ((rw == SQLITE_ROW) || (rw == SQLITE_OK))
+		while ((rw == SQLITE_ROW) || (rw == SQLITE_OK))
 		{
 			ChannelInfo CI;
 			CI.Name = (const char*)sqlite3_column_text(statement, 0);
@@ -275,6 +281,7 @@ DataResponse ShardingCore::ReadDataHTTP(std::string Content)
 	Qry.MaxSamples = 0;
 	Qry.to = 99999999999;
 
+	std::vector<std::string> FinalChannels;
 	std::unordered_map<int, int> Mapping;
 	std::string alpha;
 	std::string bravo;
@@ -288,7 +295,7 @@ DataResponse ShardingCore::ReadDataHTTP(std::string Content)
 			for (size_t y = 0; y < pieces.size(); y++)
 			{
 				int ps = pieces[y].find('=');
-				if (ps >= 0)
+				if (ps != string::npos)
 				{
 					alpha = pieces[y].substr(0, ps);
 					bravo = pieces[y].substr(ps + 1);
@@ -302,11 +309,49 @@ DataResponse ShardingCore::ReadDataHTTP(std::string Content)
 		}
 		else
 		{
-			if (ChannelNames.find(lines[x]) != ChannelNames.end())
+			if (lines[x].find("*") != string::npos)
 			{
-				Qry.Channels.push_back(Channels[ChannelNames[lines[x]]].code);	
-				Mapping[indx] = x;
-				indx++;
+				//This is a like/regex expression
+				sqlite3_stmt* statement;
+				std::string qry = "SELECT name,code FROM series WHERE name LIKE '";
+				std::string nw = lines[x];
+				for (int q = 0; q < nw.length(); q++)
+				{
+					if (nw[q] == '*')
+					{
+						nw[q] = '%';
+					}
+				}
+				qry += nw;
+				qry += "'";
+				if (sqlite3_prepare_v2(dbhandle, qry.c_str(), qry.size(), &statement, NULL) == SQLITE_OK)
+				{
+					int rw = sqlite3_step(statement);
+					while ((rw == SQLITE_ROW) || (rw == SQLITE_OK))
+					{
+						FinalChannels.push_back((const char *)sqlite3_column_text(statement, 0));
+						Qry.Channels.push_back((const char*)sqlite3_column_text(statement,1));
+						//Mapping[indx] = x-1;
+						indx++;
+
+						rw = sqlite3_step(statement);
+					}
+				}
+				else
+				{
+					cout << "DB Error: " << sqlite3_errmsg(dbhandle) << endl;
+				}
+
+			}
+			else
+			{				
+				if (ChannelNames.find(lines[x]) != ChannelNames.end())
+				{
+					FinalChannels.push_back(lines[x]);
+					Qry.Channels.push_back(Channels[ChannelNames[lines[x]]].code);
+					//Mapping[indx] = x-1;
+					indx++;
+				}
 			}
 		}
 	}
@@ -315,11 +360,20 @@ DataResponse ShardingCore::ReadDataHTTP(std::string Content)
 
 	if (Qry.Channels.size() > 0)
 	{
+
+		for (size_t x = 0; x < FinalChannels.size(); x++)
+		{
+			if (x > 0)
+				Response += ",";
+			Response += FinalChannels[x];
+		}
+		Response += "\r\n";
+
 		QueryCursor* Csr = Hist.GetHistory(Qry);
 		while (Csr->Next() >= 0)
 		{
 			QueryRow Rw = Csr->GetRow();
-			Response += std::to_string(Mapping[Rw.ChannelID]);
+			Response += std::to_string(Rw.ChannelID);
 			Response += ",";
 			Response += std::to_string(Rw.Value);
 			Response += ",";
@@ -356,6 +410,8 @@ DataResponse ShardingCore::WriteDataHTTP(std::string Content)
 			CI.FirstRecord = 0;
 			CI.Options = 0;
 			CI.Units = "";
+			CI.LastValue = nan("");
+			CI.LastCompressed = -1;
 
 			for (int x = 0; x < options.size(); x++)
 			{
@@ -525,10 +581,27 @@ bool ShardingCore::Write(WriteData WD)
 		if (ChannelNames.find(WDP.Point) != ChannelNames.end())
 		{			
 			int indx = ChannelNames[WDP.Point];
+			ChannelInfo CI = Channels[indx];
+
+			if (Compression == true)
+			{
+				if (CI.LastValue == WDP.Value)
+				{
+					CI.LastCompressed = WDP.Stamp;
+					continue;
+				}
+			}
+
 			if (WDP.Stamp == 0)
-				Hist.RecordValue(Channels[indx].code, WDP.Value);
+				Hist.RecordValue(CI.code, WDP.Value);
 			else
-				Hist.RecordValue(Channels[indx].code, WDP.Value,WDP.Stamp,0);
+				Hist.RecordValue(CI.code, WDP.Value,WDP.Stamp,0);
+
+			if (Compression == true)
+			{
+				Channels[indx].LastCompressed = -1;
+				Channels[indx].LastValue = WDP.Value;
+			}
 		}
 		else
 		{

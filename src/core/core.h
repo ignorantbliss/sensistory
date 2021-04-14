@@ -47,6 +47,8 @@ struct ChannelInfo
 	float MaxValue;
 	char code[33];
 	TIMESTAMP FirstRecord;
+	double LastValue;
+	TIMESTAMP LastCompressed;
 };
 
 class ShardingCore
@@ -86,6 +88,7 @@ private:
 	void InitConfig();
 
 	bool AutoRegister;
+	bool Compression;
 
 	std::vector<std::thread> threads;
 };
