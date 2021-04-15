@@ -89,11 +89,12 @@ void ShardingCore::InitConfig()
 	{
 		AutoRegister = true;
 	}
-	int arenabled = cfg.GetValueInt("STORAGE:compression", 1);
+	int arenabled = cfg.GetValueInt("COMPRESSION:enabled", 1);
 	if (arenabled == 1)
 	{
 		Compression = true;
-	}
+		CompThreshold = cfg.GetValueFloat("COMPRESSION:threshold", 0.001);
+	}	
 }
 
 SeriesInfo GetChannelInfo(const char* seriesname,void *context)
@@ -585,11 +586,13 @@ bool ShardingCore::Write(WriteData WD)
 
 			if (Compression == true)
 			{
-				if (CI.LastValue == WDP.Value)
+				//Skip if this is the same as the last record.
+				if (abs(CI.LastValue - WDP.Value) > CompThreshold)
 				{
 					CI.LastCompressed = WDP.Stamp;
 					continue;
 				}
+				Hist.RecordValue(CI.code, CI.LastValue, CI.LastCompressed, 0);
 			}
 
 			if (WDP.Stamp == 0)

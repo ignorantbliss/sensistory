@@ -89,6 +89,7 @@ private:
 
 	bool AutoRegister;
 	bool Compression;
+	float CompThreshold;
 
 	std::vector<std::thread> threads;
 };
